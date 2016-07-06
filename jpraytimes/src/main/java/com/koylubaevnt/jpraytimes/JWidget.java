@@ -40,6 +40,7 @@ import java.awt.geom.RoundRectangle2D;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.Map;
@@ -58,6 +59,9 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.AbstractBorder;
 import javax.swing.border.Border;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.koylubaevnt.jpraytimes.audio.CustomPlayer;
 import com.koylubaevnt.jpraytimes.forms.AboutDialog;
@@ -83,6 +87,8 @@ import id.web.michsan.praytimes.Util.DayTime;
  */
 public class JWidget extends JFrame {
 
+	
+	private static Logger log = LoggerFactory.getLogger(JWidget.class);
 	/**
 	 * 
 	 */
@@ -151,6 +157,7 @@ public class JWidget extends JFrame {
 	Time currentPrayTime = null;
 	
 	public JWidget() {
+		log.debug("JWidget: Construcor. Begin");
 		
 		setIconImage(appImage);
 		
@@ -159,45 +166,52 @@ public class JWidget extends JFrame {
 		registerSystemTray();
 		
 		if (startupSoundFileURL != null) {
+			log.debug("JWidget: Construcor. Start play sound startup");
 			CustomPlayer cp = new CustomPlayer();
 			cp.setPath(startupSoundFileURL);
 			cp.play(-1);
 		}
+		log.debug("JWidget: Construcor. End");
 		
 	}
 	
 	private void reinitializeComponents() {
-		if (alarmPlayer.getPlayer() != null)
+		log.debug("JWidget: reinitializeComponents. Begin");
+		if (alarmPlayer.getPlayer() != null) {
+			log.debug("JWidget: reinitializeComponents. Stop alarm player.");
 			alarmPlayer.pause();
-		if (player.getPlayer() != null)
+		}
+		if (player.getPlayer() != null) {
+			log.debug("JWidget: reinitializeComponents. Stop player.");
 			player.pause();
+		}
 		
 		nextPrayTime = null;
 		currentPrayTime = null;
-		
 		getAppSettings();
-		
 		makeJPopupMenu();
 		makePopupMenu();
-		
 		stopPlayingLabel.setIcon(new ImageIcon(createImage("/com/koylubaevnt/jpraytimes/images/stop_32.png", "")));
-		
-		
 		calculalateComponentSize();
-		
 		initComponents();
 		
-		if (npti != null)
+		if (npti != null) {
+			log.debug("JWidget: reinitializeComponents. Stop thread NextPrayTimeInfo.");
 			npti.stop = true;
+		}
+		
 		npti = new NextPrayTimeInfo();
 		npti.start();
 		
 		mainFrame = this;
+		log.debug("JWidget: reinitializeComponents. End");
 	}
 	
 	/*TODO check that  own tray is working*/
 	private void registerSystemTray() {
+		log.debug("JWidget: registerSystemTray. Begin.");
 		if (!SystemTray.isSupported()) {
+			log.debug("JWidget: SystemTray. is not supported - use OwnTrayIcon.");
 			ownTrayIcon = new OwnTrayIcon(appImage);
 			return;
 	    }
@@ -207,6 +221,7 @@ public class JWidget extends JFrame {
 		try {
             systemTray.add(trayIcon);
         } catch (AWTException e) {
+        	log.debug("JWidget: SystemTray. trayIcon is null. Coul don't add icon to tray.");
         	trayIcon = null;
         	return;
         }
@@ -217,10 +232,12 @@ public class JWidget extends JFrame {
 			@Override
 			public void mouseClicked(MouseEvent e) {
 				if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-					mainFrame.toFront();
+					log.debug("JWidget: SystemTray. Double clicked to tray icon -> mainFrame to front..");
+		        	mainFrame.toFront();
 				}
 			}
 		});
+		log.debug("JWidget: registerSystemTray. End.");
 	}
 	
 	private void showBaloonTip(String caption, String text, MessageType messageType) {
@@ -877,48 +894,75 @@ public class JWidget extends JFrame {
 		
 		@Override
 		public void run() {
+			log.debug("NextPrayTimeInfo: run. Begin.");
 			DayTime dayTime;
 			int delta = 0, hourCurrentTime = 0, hourOldTime = 0;
 			boolean changeTime = false;
 			boolean prayTimeNameRename = false;
+			SimpleDateFormat df = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 			/*TODO calculation */
 			do
 			{	if(!Thread.interrupted() && !stop)
 				{
 					calculationDate = new GregorianCalendar();
+					log.debug("NextPrayTimeInfo: LOOP. {}", df.format(calculationDate));
 					if (nextPrayTime == null || nextPrayTime.equals(currentPrayTime)) {
+						log.debug("NextPrayTimeInfo: LOOP. nextPrayTime == null || nextPrayTime.equals(currentPrayTime)");
 						changeTime = false;
 						result = prayTime.getTimes(calculationDate, location);
 						for (Map.Entry<Integer, Time> time : AppConfig.mapTimes.entrySet()) {
 							nextPrayTime = time.getValue();
+							log.debug("NextPrayTimeInfo: LOOP. nextPrayTime = {}", nextPrayTime);
 							if (mapTimeVisible.get(nextPrayTime).booleanValue()) {
+								log.debug("NextPrayTimeInfo: LOOP. mapTimeVisible = {}", nextPrayTime);
 								dayTime = Util.toDayTime(result.get(nextPrayTime).doubleValue(), true);
+								log.debug("NextPrayTimeInfo: LOOP. dayTime = {}", dayTime);
 								if (dayTime.isNan())
 									continue;
 								
 								hourCurrentTime = dayTime.getHours();
 								delta = hourCurrentTime - hourOldTime;
+								log.debug("delta < 0 || calculationDate.get(GregorianCalendar.HOUR_OF_DAY) < hourCurrentTime || (calculationDate.get(GregorianCalendar.HOUR_OF_DAY) == hourCurrentTime &&calculationDate.get(GregorianCalendar.MINUTE) < dayTime.getMinutes()))");
+								log.debug("({} < 0 || {} < {} || ( {} == {} && {} < {}))",delta, calculationDate.get(GregorianCalendar.HOUR_OF_DAY), hourCurrentTime, calculationDate.get(GregorianCalendar.HOUR_OF_DAY),hourCurrentTime, calculationDate.get(GregorianCalendar.MINUTE), dayTime.getMinutes() );
 								if (delta < 0 || calculationDate.get(GregorianCalendar.HOUR_OF_DAY) < hourCurrentTime ||
 										(calculationDate.get(GregorianCalendar.HOUR_OF_DAY) == hourCurrentTime &&
 										calculationDate.get(GregorianCalendar.MINUTE) < dayTime.getMinutes())) {
 									changeTime = true;
+									log.debug("NextPrayTimeInfo: LOOP. changeTime = {}, hourCurrentTime = {}", changeTime, hourCurrentTime);
 									break;
+								} else {
+									log.debug("NextPrayTimeInfo: LOOP. changeTime = {}, hourCurrentTime = {}", changeTime, hourCurrentTime);
 								}
 								currentPrayTime = nextPrayTime;
 								hourOldTime = hourCurrentTime;
+							} else {
+								log.debug("NextPrayTimeInfo: LOOP. mapTimeVisible NOT VISIBLE: {}", nextPrayTime);
 							}
 						}
 						
 						if (!changeTime) {
-							if (!mapTimeVisible.get(nextPrayTime).booleanValue() 
+							log.debug("NextPrayTimeInfo: changeTime = false");
+							log.debug("NextPrayTimeInfo: !mapTimeVisible.get(nextPrayTime).booleanValue()"+
+							"|| Util.toDayTime(result.get(nextPrayTime).doubleValue(), true).isNan() "+
+							"|| nextPrayTime.equals(currentPrayTime)");
+							log.debug("NextPrayTimeInfo: !{}"+
+									"|| {} "+
+									"|| {}", mapTimeVisible.get(nextPrayTime).booleanValue(), 
+									Util.toDayTime(result.get(nextPrayTime).doubleValue(), true).isNan(),
+									nextPrayTime.equals(currentPrayTime));
+							if (!mapTimeVisible.get(nextPrayTime).booleanValue()
 									|| Util.toDayTime(result.get(nextPrayTime).doubleValue(), true).isNan()
 									|| nextPrayTime.equals(currentPrayTime)) {
+								log.debug("NextPrayTimeInfo: IN LOOP");
 								for (Map.Entry<Integer, Time> time : AppConfig.mapTimes.entrySet()) {
 									nextPrayTime = time.getValue();
+									log.debug("NextPrayTimeInfo: IN LOOP: nextPrayTime = {}, visible = {}", nextPrayTime, mapTimeVisible.get(nextPrayTime).booleanValue());
 									if (mapTimeVisible.get(nextPrayTime).booleanValue()) {
 										calculationDate = new GregorianCalendar();
 										calculationDate.add(GregorianCalendar.DAY_OF_MONTH, 1);
+										log.debug("NextPrayTimeInfo: IN LOOP. New calculation: ", df.format(calculationDate));
 										result = prayTime.getTimes(calculationDate, location);
+										log.debug("NextPrayTimeInfo: IN LOOP. !{}: ", Util.toDayTime(result.get(nextPrayTime).doubleValue(), true).isNan());
 										if (!Util.toDayTime(result.get(nextPrayTime).doubleValue(), true).isNan())
 											break;
 									}
@@ -1071,9 +1115,12 @@ public class JWidget extends JFrame {
 					}
 
 					//TODO It's time to pray
+					log.debug("NextPrayTimeInfo: Check time to pray?. !changeTime || !nextPrayTime.equals(currentPrayTime) = !{} ||!{}: ", changeTime, nextPrayTime.equals(currentPrayTime));
 					if (!changeTime || !nextPrayTime.equals(currentPrayTime)) {
+						log.debug("NextPrayTimeInfo: Check time to pray?. alarmItTimeToPrayRun || hours <= 0 && minutes <=0 = {} || {} <= 0 && {} <=0: ", alarmItTimeToPrayRun ,hours, minutes );
 						if (alarmItTimeToPrayRun || hours <= 0 && minutes <=0)
 						{
+							log.debug("NextPrayTimeInfo: Check time to pray?. TIME TO PRAY");
 							alarmItTimeToPrayRun = true;
 							stringBuilder.append(I18n.resourceBundle.getString("time_to_pray"));
 							player.setPath(mapSound.get(nextPrayTime));
@@ -1105,18 +1152,22 @@ public class JWidget extends JFrame {
 					
 					try {
 						/*Correct for second switch*/
-						stopPlayingMenuItem.setEnabled(player.getPlayer() != null || alarmPlayer.getPlayer() != null);						
+						stopPlayingMenuItem.setEnabled(player.getPlayer() != null || alarmPlayer.getPlayer() != null);
+						log.debug("NextPrayTimeInfo: IN LOOP. sleep{}: ", 60*1000 - (new GregorianCalendar().get(GregorianCalendar.SECOND)) * 1000 + 1);
 						sleep(60*1000 - (new GregorianCalendar().get(GregorianCalendar.SECOND)) * 1000 + 1);
 					} catch (InterruptedException e) {
+						log.error("NextPrayTimeInfo: " + e);
 						e.printStackTrace();
 					}
 				}
 				else
 				{
+					log.error("NextPrayTimeInfo: Thread is interrupted or stoped");
 					break;
 				}
 			}
 			while(true);
+			log.debug("NextPrayTimeInfo: run. End.");
 		}
 		
 	}
